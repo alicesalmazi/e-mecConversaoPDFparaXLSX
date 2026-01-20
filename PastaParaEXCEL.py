@@ -176,6 +176,18 @@ def extrair_protocolo(texto: str) -> str:
     )
     return m.group(1) if m else ""
 
+def protocolo_ja_processado(
+    protocolo: str,
+    pasta_excel: Path
+) -> bool:
+    if not protocolo:
+        return False
+
+    for arquivo in pasta_excel.glob("*.xlsx"):
+        if protocolo in arquivo.stem:
+            return True
+
+    return False
 
 # 5. INFORMAÇÕES DO CURSO
 def extrair_informacoes_curso(texto: str) -> dict:
@@ -369,6 +381,16 @@ def processar_pasta_pdfs(
 
     for pdf in pdfs:
         try:
+            print(f"📄 Analisando: {pdf.name}")
+
+            # 🔥 leitura mínima só para pegar protocolo
+            texto_bruto = pdf_para_texto_bruto(pdf)
+            protocolo = extrair_protocolo(texto_bruto)
+
+            if protocolo_ja_processado(protocolo, pasta_saida_excel):
+                print(f"⏭️ Protocolo {protocolo} já processado. Pulando...")
+                continue
+            
             print(f"📄 Processando: {pdf.name}")
 
             texto_bruto = pdf_para_texto_bruto(pdf)
