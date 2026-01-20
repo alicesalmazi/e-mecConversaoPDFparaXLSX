@@ -5,6 +5,10 @@ import json
 import pandas as pd
 from pathlib import Path
 
+def salvar_txt_debug(texto: str, caminho_txt: Path) -> None:
+    caminho_txt.write_text(texto, encoding="utf-8")
+    print(f"📝 TXT gerado para inspeção: {caminho_txt}")
+
 # 1. PDF -> TEXTO
 def pdf_para_texto(caminho_pdf: Path) -> str:
     textos = []
@@ -14,6 +18,15 @@ def pdf_para_texto(caminho_pdf: Path) -> str:
             if conteudo:
                 textos.append(conteudo)
     return " ".join(textos)
+
+def pdf_para_texto_bruto(caminho_pdf: Path) -> str:
+    textos = []
+    with pdfplumber.open(caminho_pdf) as pdf:
+        for pagina in pdf.pages:
+            conteudo = pagina.extract_text()
+            if conteudo:
+                textos.append(conteudo)
+    return "\n".join(textos)
 
 # 2. LIMPEZA DO TEXTO
 def limpar_texto(texto: str) -> str:
@@ -60,7 +73,7 @@ def extrair_todos_itens(texto: str) -> dict:
 def extrair_notas_justificativas(texto: str) -> dict:
     padrao = re.compile(
         r'(?P<titulo>\d+\.\d+\.\s+[^.]+?\.)\s*'
-        r'(?:\d|NSA)?\s*'
+        r'.*?'
         r'Justificativa\s+para\s+conceito\s+(?P<conceito>\d|NSA)\s*:'
         r'(?P<justificativa>.*?)(?=\s\d+\.\d+\.|\Z)',
         re.IGNORECASE | re.DOTALL
@@ -73,16 +86,11 @@ def extrair_notas_justificativas(texto: str) -> dict:
         nota = m.group("conceito").strip()
         justificativa = m.group("justificativa")
 
-        # limpeza pesada
+        # limpeza
         justificativa = re.sub(r'\b\d+\s+of\s+\d+\b', ' ', justificativa, flags=re.IGNORECASE)
-        justificativa = re.sub(r'\d{2}/\d{2}/\d{4},?\s*\d{2}:\d{2}', ' ', justificativa)
-        justificativa = re.sub(r'Firefox', ' ', justificativa, flags=re.IGNORECASE)
-        justificativa = re.sub(r'Dimensão\s+\d+\s*:.*$', '', justificativa, flags=re.IGNORECASE)
-
+        justificativa = re.sub(r'Firefox.*?blank', ' ', justificativa, flags=re.IGNORECASE)
+        justificativa = re.sub(r'\d{2}/\d{2}/\d{4}.*?\d{2}:\d{2}', ' ', justificativa)
         justificativa = re.sub(r'\s+', ' ', justificativa).strip()
-
-        if len(justificativa) < 10:
-            justificativa = ""
 
         resultado[titulo] = {
             "Nota": nota,
@@ -91,12 +99,78 @@ def extrair_notas_justificativas(texto: str) -> dict:
 
     return resultado
 
+def extrair_docentes(texto: str, ato_regulatorio: str, info_curso: dict) -> list:
+    docentes = []
+
+    bloco = re.search(
+        r'\bDOCENTES\b(.*?)(CATEGORIAS AVALIADAS)',
+        texto,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+
+    if not bloco:
+        return docentes
+
+    texto_docentes = bloco.group(1)
+
+    # remove cabeçalhos da tabela
+    texto_docentes = re.sub(
+        r'Nome do Docente|Titulação|Regime|Vínculo|Tempo de vínculo.*?meses\)',
+        '',
+        texto_docentes,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+
+    # cada docente termina em Mês(es)
+    registros = re.findall(
+        r'.*?\d+\s*Mês\(es\)',
+        texto_docentes,
+        flags=re.IGNORECASE | re.DOTALL
+    )
+
+    for reg in registros:
+        reg = re.sub(r'\s+', ' ', reg).strip()
+
+        m = re.search(
+            r'(?P<nome>.*?)\s+'
+            r'(?P<titulacao>Doutorado|Mestrado|Especialização)\s+'
+            r'(?P<regime>Integral|Parcial|Horista)\s+'
+            r'(?P<vinculo>CLT|Outro)\s+'
+            r'(?P<meses>\d+)\s*Mês\(es\)',
+            reg,
+            flags=re.IGNORECASE
+        )
+
+        if not m:
+            continue
+
+        nome = re.sub(r'\s+', ' ', m.group("nome")).strip()
+
+        docente = {
+            "Nome do Docente": nome,
+            "Titulação": m.group("titulacao").capitalize(),
+            "Regime de Trabalho": m.group("regime").capitalize(),
+            "Vínculo Empregatício": m.group("vinculo").upper(),
+            "Curso": info_curso["Nome"],
+            "Campus": info_curso["Campus"],
+            "Ano da avaliação": info_curso["Ano da avaliação"],
+            "Ato Regulatório": info_curso["Ato Regulatório"]
+        }
+
+        if ato_regulatorio.lower() == "reconhecimento":
+            docente["Tempo de vínculo (meses)"] = m.group("meses")
+
+        docentes.append(docente)
+
+    return docentes
+
 # 5. INFORMAÇÕES DO CURSO
 def extrair_informacoes_curso(texto: str) -> dict:
     info = {
         "Nome": "",
         "Campus": "",
         "Ano da avaliação": "",
+        "Ato Regulatório": "",
         "CONCEITO FINAL CONTÍNUO": "",
         "CONCEITO FINAL FAIXA": ""
     }
@@ -107,7 +181,9 @@ def extrair_informacoes_curso(texto: str) -> dict:
         texto
     )
     if m:
-        info["Nome"] = m.group(1).strip()
+        # remove apenas sufixo " I", " II", " III" no final do nome
+        info["Nome"] = re.sub(r'\s+\bI{1,3}\b$', '', info["Nome"]).strip()
+
 
     # Campus
     if re.search(r'Ato Regulatório.*EAD', texto, flags=re.IGNORECASE):
@@ -140,6 +216,15 @@ def extrair_informacoes_curso(texto: str) -> dict:
         info["CONCEITO FINAL CONTÍNUO"] = m.group(1)
         info["CONCEITO FINAL FAIXA"] = m.group(2)
 
+    # Ato Regulatório
+    m = re.search(
+        r'Ato Regulatório\s*:\s*(Reconhecimento|Autorização)',
+        texto,
+        flags=re.IGNORECASE
+    )
+    if m:
+        info["Ato Regulatório"] = m.group(1).capitalize()
+
     return info
 
 # 6. ESTRUTURA BASE
@@ -149,6 +234,7 @@ def criar_estrutura_base() -> dict:
             "Nome": "",
             "Campus": "",
             "Ano da avaliação": "",
+            "Ato Regulatório": "",
             "CONCEITO FINAL CONTÍNUO": "",
             "CONCEITO FINAL FAIXA": ""
         },
@@ -209,6 +295,7 @@ def json_para_excel(json_dados: dict, caminho_excel: Path) -> None:
                     "Curso": info["Nome"],
                     "Campus": info["Campus"],
                     "Ano da avaliação": info["Ano da avaliação"],
+                    "Ato Regulatório": info["Ato Regulatório"],
                     "Conceito Final Contínuo": info["CONCEITO FINAL CONTÍNUO"],
                     "Conceito Final Faixa": info["CONCEITO FINAL FAIXA"],
                     "Dimensão": dimensao,
@@ -219,6 +306,19 @@ def json_para_excel(json_dados: dict, caminho_excel: Path) -> None:
 
     pd.DataFrame(linhas).to_excel(caminho_excel, index=False, engine="openpyxl")
     print(f"✅ Excel gerado: {caminho_excel}")
+
+def docentes_para_excel(
+    docentes: list,
+    caminho_excel: Path
+) -> None:
+    if not docentes:
+        print("⚠️ Nenhum docente encontrado.")
+        return
+
+    df = pd.DataFrame(docentes)
+    df.to_excel(caminho_excel, index=False, engine="openpyxl")
+    print(f"✅ Excel de docentes gerado: {caminho_excel}")
+
 
 # 10. PROCESSAR PASTA DE PDFs
 def processar_pasta_pdfs(
@@ -245,6 +345,24 @@ def processar_pasta_pdfs(
 
             dados = pdf_para_json(pdf, json_saida)
             json_para_excel(dados, excel_saida)
+
+            ato = dados["Informações curso"]["Ato Regulatório"]
+
+            texto_bruto = pdf_para_texto_bruto(pdf)
+            txt_debug = pasta_saida_excel / f"{nome_base}_debug.txt"
+            salvar_txt_debug(texto_bruto, txt_debug)
+
+
+            info_curso = dados["Informações curso"]
+
+            docentes = extrair_docentes(
+                texto_bruto,
+                ato,
+                info_curso
+            )
+
+            excel_docentes = pasta_saida_excel / f"{nome_base}_docentes.xlsx"
+            docentes_para_excel(docentes, excel_docentes)
 
         except Exception as e:
             print(f"❌ Erro ao processar {pdf.name}: {e}")
