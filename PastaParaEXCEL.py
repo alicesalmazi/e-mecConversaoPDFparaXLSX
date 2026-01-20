@@ -75,7 +75,7 @@ def extrair_notas_justificativas(texto: str) -> dict:
         r'(?P<titulo>\d+\.\d+\.\s+[^.]+?\.)\s*'
         r'.*?'
         r'Justificativa\s+para\s+conceito\s+(?P<conceito>\d|NSA)\s*:'
-        r'(?P<justificativa>.*?)(?=\s\d+\.\d+\.|\Z)',
+        r'(?P<justificativa>.*?)(?=\s\d+\.\d+\.|\sDimensão\s+\d+|\Z)',
         re.IGNORECASE | re.DOTALL
     )
 
@@ -175,27 +175,46 @@ def extrair_informacoes_curso(texto: str) -> dict:
         "CONCEITO FINAL FAIXA": ""
     }
 
-    # Nome do curso (curto e limpo)
+    # =========================
+    # NOME DO CURSO
+    # =========================
     m = re.search(
-        r'Curso\(s\).*?avaliado\(s\)\s*:\s*([A-ZÀ-Ú\s]{5,80})',
-        texto
+        r'Curso\(s\).*?avaliado\(s\)\s*:\s*(.*?)\s*Informações da comissão',
+        texto,
+        flags=re.IGNORECASE | re.DOTALL
     )
     if m:
-        # remove apenas sufixo " I", " II", " III" no final do nome
-        info["Nome"] = re.sub(r'\s+\bI{1,3}\b$', '', info["Nome"]).strip()
+        nome = m.group(1)
+        nome = re.sub(r'\s+', ' ', nome).strip()
+
+        # remove apenas " I", " II", " III" no final
+        nome = re.sub(r'\s+\bI{1,3}\b$', '', nome)
+
+        info["Nome"] = nome
 
 
-    # Campus
-    if re.search(r'Ato Regulatório.*EAD', texto, flags=re.IGNORECASE):
+    # =========================
+    # CAMPUS (MODALIDADE + NOME)
+    # =========================
+
+    inicio_texto = texto[:1500]
+
+    # Modalidade
+    if re.search(r'\(EAD\)|\(EaD\)', inicio_texto):
         info["Campus"] = "EAD"
     else:
-        m = re.search(
-            r'Endereço da IES\s*:?\s*\d+\s*-\s*(.+?)\s*-',
-            texto,
-            flags=re.IGNORECASE
-        )
-        if m:
-            info["Campus"] = m.group(1).strip()
+        info["Campus"] = "Presencial"
+
+    # Nome do campus físico
+    m = re.search(
+        r'Endereço da IES\s*:?\s*\d+\s*-\s*(UNASP campus [A-Za-zÀ-ÿ\s]+?)\s*-',
+        texto,
+        flags=re.IGNORECASE
+    )
+
+    if m:
+        campus_fisico = m.group(1).strip()
+        info["Campus"] = campus_fisico
 
     # Ano da avaliação
     m = re.search(
