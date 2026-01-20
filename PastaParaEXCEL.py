@@ -73,9 +73,11 @@ def extrair_todos_itens(texto: str) -> dict:
 def extrair_notas_justificativas(texto: str) -> dict:
     padrao = re.compile(
         r'(?P<titulo>\d+\.\d+\.\s+[^.]+?\.)\s*'
+        r'(?:[\d,]+\s*)?' 
         r'.*?'
         r'Justificativa\s+para\s+conceito\s+(?P<conceito>\d|NSA)\s*:'
-        r'(?P<justificativa>.*?)(?=\s\d+\.\d+\.|\sDimensão\s+\d+|\Z)',
+        r'(?P<justificativa>.*?)'
+        r'(?=\s+\d+\.\d+\.\s+[A-Z]|\s+Dimensão\s+\d+|\Z)', # O segredo está no [A-Z]
         re.IGNORECASE | re.DOTALL
     )
 
@@ -87,13 +89,19 @@ def extrair_notas_justificativas(texto: str) -> dict:
         justificativa = m.group("justificativa")
 
         # limpeza
+        padrao_lixo = (
+            r'(?:\d{1,2}/\d{1,2}/\d{2,4},?\s*\d{1,2}:\d{1,2}(?::\d{1,2})?\s*(?:AM|PM)?)' # Datas e Horas flexíveis
+            r'|(?:\d+\s+of\s+\d+)' # Paginação "1 of 10"
+            r'|Firefox|about:blank' # Marcas do navegador
+        )
+
         justificativa = re.sub(
-            r'(?:\d+\s+of\s+\d+|Firefox|about:blank|\d{2}/\d{2}/\d{4},?\s*\d{2}:\d{2})',
+            padrao_lixo,
             ' ',
             justificativa,
             flags=re.IGNORECASE
         )
-
+        
         justificativa = re.sub(r'\s+', ' ', justificativa).strip()
 
         resultado[titulo] = {
@@ -390,7 +398,7 @@ def processar_pasta_pdfs(
             if protocolo_ja_processado(protocolo, pasta_saida_excel):
                 print(f"⏭️ Protocolo {protocolo} já processado. Pulando...")
                 continue
-            
+
             print(f"📄 Processando: {pdf.name}")
 
             texto_bruto = pdf_para_texto_bruto(pdf)
