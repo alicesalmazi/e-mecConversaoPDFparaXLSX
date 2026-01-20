@@ -5,9 +5,9 @@ import json
 import pandas as pd
 from pathlib import Path
 
-def salvar_txt_debug(texto: str, caminho_txt: Path) -> None:
-    caminho_txt.write_text(texto, encoding="utf-8")
-    print(f"📝 TXT gerado para inspeção: {caminho_txt}")
+# def salvar_txt_debug(texto: str, caminho_txt: Path) -> None:
+#     caminho_txt.write_text(texto, encoding="utf-8")
+#     print(f"📝 TXT gerado para inspeção: {caminho_txt}")
 
 # 1. PDF -> TEXTO
 def pdf_para_texto(caminho_pdf: Path) -> str:
@@ -87,9 +87,13 @@ def extrair_notas_justificativas(texto: str) -> dict:
         justificativa = m.group("justificativa")
 
         # limpeza
-        justificativa = re.sub(r'\b\d+\s+of\s+\d+\b', ' ', justificativa, flags=re.IGNORECASE)
-        justificativa = re.sub(r'Firefox.*?blank', ' ', justificativa, flags=re.IGNORECASE)
-        justificativa = re.sub(r'\d{2}/\d{2}/\d{4}.*?\d{2}:\d{2}', ' ', justificativa)
+        justificativa = re.sub(
+            r'(?:\d+\s+of\s+\d+|Firefox|about:blank|\d{2}/\d{2}/\d{4},?\s*\d{2}:\d{2})',
+            ' ',
+            justificativa,
+            flags=re.IGNORECASE
+        )
+
         justificativa = re.sub(r'\s+', ' ', justificativa).strip()
 
         resultado[titulo] = {
@@ -99,70 +103,79 @@ def extrair_notas_justificativas(texto: str) -> dict:
 
     return resultado
 
-def extrair_docentes(texto: str, ato_regulatorio: str, info_curso: dict) -> list:
-    docentes = []
+# def extrair_docentes(texto: str, ato_regulatorio: str, info_curso: dict) -> list:
+#     docentes = []
 
-    bloco = re.search(
-        r'\bDOCENTES\b(.*?)(CATEGORIAS AVALIADAS)',
+#     bloco = re.search(
+#         r'\bDOCENTES\b(.*?)(CATEGORIAS AVALIADAS)',
+#         texto,
+#         flags=re.IGNORECASE | re.DOTALL
+#     )
+
+#     if not bloco:
+#         return docentes
+
+#     texto_docentes = bloco.group(1)
+
+#     # remove cabeçalhos da tabela
+#     texto_docentes = re.sub(
+#         r'Nome do Docente|Titulação|Regime|Vínculo|Tempo de vínculo.*?meses\)',
+#         '',
+#         texto_docentes,
+#         flags=re.IGNORECASE | re.DOTALL
+#     )
+
+#     # cada docente termina em Mês(es)
+#     registros = re.findall(
+#         r'.*?\d+\s*Mês\(es\)',
+#         texto_docentes,
+#         flags=re.IGNORECASE | re.DOTALL
+#     )
+
+#     for reg in registros:
+#         reg = re.sub(r'\s+', ' ', reg).strip()
+
+#         m = re.search(
+#             r'(?P<nome>.*?)\s+'
+#             r'(?P<titulacao>Doutorado|Mestrado|Especialização)\s+'
+#             r'(?P<regime>Integral|Parcial|Horista)\s+'
+#             r'(?P<vinculo>CLT|Outro)\s+'
+#             r'(?P<meses>\d+)\s*Mês\(es\)',
+#             reg,
+#             flags=re.IGNORECASE
+#         )
+
+#         if not m:
+#             continue
+
+#         nome = re.sub(r'\s+', ' ', m.group("nome")).strip()
+
+#         docente = {
+#             "Nome do Docente": nome,
+#             "Titulação": m.group("titulacao").capitalize(),
+#             "Regime de Trabalho": m.group("regime").capitalize(),
+#             "Vínculo Empregatício": m.group("vinculo").upper(),
+#             "Curso": info_curso["Nome"],
+#             "Campus": info_curso["Campus"],
+#             "Ano da avaliação": info_curso["Ano da avaliação"],
+#             "Ato Regulatório": info_curso["Ato Regulatório"]
+#         }
+
+#         if ato_regulatorio.lower() == "reconhecimento":
+#             docente["Tempo de vínculo (meses)"] = m.group("meses")
+
+#         docentes.append(docente)
+
+#     return docentes
+
+def extrair_protocolo(texto: str) -> str:
+    m = re.search(
+        r'Protocolo\s*:\s*(\d+)',
         texto,
-        flags=re.IGNORECASE | re.DOTALL
+        flags=re.IGNORECASE
     )
+    return m.group(1) if m else ""
 
-    if not bloco:
-        return docentes
-
-    texto_docentes = bloco.group(1)
-
-    # remove cabeçalhos da tabela
-    texto_docentes = re.sub(
-        r'Nome do Docente|Titulação|Regime|Vínculo|Tempo de vínculo.*?meses\)',
-        '',
-        texto_docentes,
-        flags=re.IGNORECASE | re.DOTALL
-    )
-
-    # cada docente termina em Mês(es)
-    registros = re.findall(
-        r'.*?\d+\s*Mês\(es\)',
-        texto_docentes,
-        flags=re.IGNORECASE | re.DOTALL
-    )
-
-    for reg in registros:
-        reg = re.sub(r'\s+', ' ', reg).strip()
-
-        m = re.search(
-            r'(?P<nome>.*?)\s+'
-            r'(?P<titulacao>Doutorado|Mestrado|Especialização)\s+'
-            r'(?P<regime>Integral|Parcial|Horista)\s+'
-            r'(?P<vinculo>CLT|Outro)\s+'
-            r'(?P<meses>\d+)\s*Mês\(es\)',
-            reg,
-            flags=re.IGNORECASE
-        )
-
-        if not m:
-            continue
-
-        nome = re.sub(r'\s+', ' ', m.group("nome")).strip()
-
-        docente = {
-            "Nome do Docente": nome,
-            "Titulação": m.group("titulacao").capitalize(),
-            "Regime de Trabalho": m.group("regime").capitalize(),
-            "Vínculo Empregatício": m.group("vinculo").upper(),
-            "Curso": info_curso["Nome"],
-            "Campus": info_curso["Campus"],
-            "Ano da avaliação": info_curso["Ano da avaliação"],
-            "Ato Regulatório": info_curso["Ato Regulatório"]
-        }
-
-        if ato_regulatorio.lower() == "reconhecimento":
-            docente["Tempo de vínculo (meses)"] = m.group("meses")
-
-        docentes.append(docente)
-
-    return docentes
 
 # 5. INFORMAÇÕES DO CURSO
 def extrair_informacoes_curso(texto: str) -> dict:
@@ -326,17 +339,17 @@ def json_para_excel(json_dados: dict, caminho_excel: Path) -> None:
     pd.DataFrame(linhas).to_excel(caminho_excel, index=False, engine="openpyxl")
     print(f"✅ Excel gerado: {caminho_excel}")
 
-def docentes_para_excel(
-    docentes: list,
-    caminho_excel: Path
-) -> None:
-    if not docentes:
-        print("⚠️ Nenhum docente encontrado.")
-        return
+# def docentes_para_excel(
+#     docentes: list,
+#     caminho_excel: Path
+# ) -> None:
+#     if not docentes:
+#         print("⚠️ Nenhum docente encontrado.")
+#         return
 
-    df = pd.DataFrame(docentes)
-    df.to_excel(caminho_excel, index=False, engine="openpyxl")
-    print(f"✅ Excel de docentes gerado: {caminho_excel}")
+#     df = pd.DataFrame(docentes)
+#     df.to_excel(caminho_excel, index=False, engine="openpyxl")
+#     print(f"✅ Excel de docentes gerado: {caminho_excel}")
 
 
 # 10. PROCESSAR PASTA DE PDFs
@@ -358,9 +371,21 @@ def processar_pasta_pdfs(
         try:
             print(f"📄 Processando: {pdf.name}")
 
-            nome_base = pdf.stem
-            json_saida = pasta_saida_json / f"{nome_base}.json"
-            excel_saida = pasta_saida_excel / f"{nome_base}.xlsx"
+            texto_bruto = pdf_para_texto_bruto(pdf)
+            protocolo = extrair_protocolo(texto_bruto)
+
+            if not protocolo:
+                print(f"⚠️ Protocolo não encontrado em {pdf.name}")
+                continue
+
+            excel_saida = pasta_saida_excel / f"{protocolo}.xlsx"
+            excel_docentes = pasta_saida_excel / f"{protocolo}_docentes.xlsx"
+            json_saida = pasta_saida_json / f"{protocolo}.json"
+
+            # se já existe, pula
+            if excel_saida.exists() and excel_docentes.exists():
+                print(f"⏭️ Protocolo {protocolo} já processado. Pulando.")
+                continue
 
             dados = pdf_para_json(pdf, json_saida)
             json_para_excel(dados, excel_saida)
@@ -368,20 +393,20 @@ def processar_pasta_pdfs(
             ato = dados["Informações curso"]["Ato Regulatório"]
 
             texto_bruto = pdf_para_texto_bruto(pdf)
-            txt_debug = pasta_saida_excel / f"{nome_base}_debug.txt"
-            salvar_txt_debug(texto_bruto, txt_debug)
+            # txt_debug = pasta_saida_excel / f"{nome_base}_debug.txt"
+            # salvar_txt_debug(texto_bruto, txt_debug)
 
 
             info_curso = dados["Informações curso"]
 
-            docentes = extrair_docentes(
-                texto_bruto,
-                ato,
-                info_curso
-            )
+            # docentes = extrair_docentes(
+            #     texto_bruto,
+            #     ato,
+            #     info_curso
+            # )
 
-            excel_docentes = pasta_saida_excel / f"{nome_base}_docentes.xlsx"
-            docentes_para_excel(docentes, excel_docentes)
+            # excel_docentes = pasta_saida_excel / f"{nome_base}_docentes.xlsx"
+            # docentes_para_excel(docentes, excel_docentes)
 
         except Exception as e:
             print(f"❌ Erro ao processar {pdf.name}: {e}")
