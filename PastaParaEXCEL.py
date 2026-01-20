@@ -443,9 +443,9 @@ def processar_pasta_pdfs(
 
 # 11. EXECUÇÃO
 if __name__ == "__main__":
-    pasta_pdfs = Path("Testes/pdfs")
-    pasta_json = Path("Testes/json")
-    pasta_excel = Path("Testes/excel")
+    pasta_pdfs = Path("Diretoria de Regulação/PDFs")
+    pasta_json = Path("Diretoria de Regulação/JSON")
+    pasta_excel = Path("Diretoria de Regulação/EXCEL")
 
     processar_pasta_pdfs(
         pasta_pdfs,
